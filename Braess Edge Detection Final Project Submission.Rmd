@@ -1,0 +1,1393 @@
+---
+title: "Final Submission Braess Edge Detection"
+author: "Alex Thornton"
+date: "2024-05-15"
+output: pdf_document
+---
+
+
+# Statement {-}
+
+```
+TRAN5340M
+Transport Data Science
+Assignment Title:	Braess Edge Detection
+Student ID: 201793166
+Word Count:	3000	
+Lecturer: Dr Malcom Morgan & Dr Robin Lovelace
+Submission Date: 15/5		
+Semester:	2			
+Academic Year: 		202324
+Generative AI Category: AMBER
+```
+
+Use of Generative Artificial Intelligence (Gen AI) in this assessment.
+
+I have used Gen AI only for the specific purposes outlined in my acknowledgements
+
+# Library 
+
+- library(knitr)
+- library(reticulate)
+- library(osmnx)
+- library(matplotlib)
+- library(Counter)
+- library(shapely)
+
+- py -m pip install osmnx
+- py -m pip install networkx
+- py -m pip install reticulate
+- py -m pip install matplotlib
+- py -m pip install Counter
+- py -m pip install shapely
+
+# Abstract 
+In 1968, Dietrich Braess demonstrated a counter-intuitive phenomenon now known as Braess Paradox, where adding a new link to a road network can degrade overall network performance. This paradox is crucial for urban and transport planners to understand, yet it remains poorly understood by the wider public and even amongst professionals. This research project aims to apply a theoretical model of Braess Paradox to Queens Road in Leicester, providing insights for transport and urban policy.
+A network model was built incorporating edge attributes such as natural time, usage, capacity, dynamic time, and perceived time. Agents were generated based on origin-destination pairs and various routing algorithms. The model was validated using a classic example and then scaled to more complex scenarios. Our findings indicate that Queens Road exhibits clear Braessian behaviour, leading to an efficiency loss as predicted by Roughgarden ,2002.
+The results suggest that Queens Road should not be considered a through route and should be pedestrianised to better serve the local community. These findings underscore the importance of integrating Braess Paradox considerations into transport planning. 
+
+# Introduction 
+In 1968 Dietrich Braess published a paper which showed that adding a new link to a road network might not improve the overall operation of the network and in some cases may make the network function worse. This seemingly counter intuitive result became known as Braess Paradox. 
+A brief generalisable understanding can be formulated as under the condition of minimal flow, adding a new link to a network can improve network performance if that link improves travel time. This part is obvious. However, when increasing flow, a special instance can occur. This is when the new link reduces the effective capacity of the system by increasing the flow through low-capacity links, which then reduces performance. This case can still occur even when flow is dynamically managed from the perspective of each user.
+
+## Why is it Important in Transport Networks? 
+
+There are many things that urban and transport planners should consider when deciding to add a new road. The logic in Britain has generally been to build for cars. This has seen traffic saw to record levels and is a generalisable result from around the world, which unless you’re the majority shareholder in an oil company is generally seen as a bad thing.
+Obviously, there are many components to this and there are many reasons why traffic has soared. However, anecdotal evidence suggests that Braess Paradox is generally poorly understood by both the wider public and even professionals in the transport and urban planning industry.
+
+## What are Potential Practical Applications?
+
+The major practical application is the general principle of reducing access and speed on and to low-capacity routes, to not lead them to become overcapacity. This has a myriad of other benefits to. Further to this, transport planning should not be seen as a one-dimensional quantitative problem that can be easily and exactly solved with a model, especially in the case of cars. It should be understood analytically through the study of a myriad of effects that can be understood quantitatively, and appreciated qualitatively, recognizing that solving transport problems exactly for cars is not feasible. As will be discussed later, predicting braessian edges is an NP hard problem and there is no computationally sensible generalisable solution on large scales. What then should be taken from this is a rigorous appreciation of the quantitative and how to apply that to the qualitative. 
+
+## No Exact Generalisable Theoretical Way of Predicting Braessian Edges
+The best theoretical work to be done on this topic is often found when Braess paradox is applied to electrical networks. Its beyond the scope of this project to discuss why that is. One reason intuitively is that because the failure of electrical networks is seen as something that can never be allowed to happen; the same is not true for car networks. The obvious analogy is with airline safety and car safety. 
+
+However, a good example is the work by Roughgarden 2006, which proved that detecting even the worst manifestations of Braess Paradox is an NP hard problem. Since then, more substantive work has been done in electrical networks Manik 2022, which showed that an analogous problem is computationally solvable un-exactly at least by considering the rerouting alignment, or in other words how the between centrality changes when adding and edge. This is the logic that has been taken forward in finding an approximate solution. 
+
+# Aims
+This research project seeks to apply a theoretical model of Braess paradox to a real-world scenario to add to a body of work relating to the case for a different approach to transport and urban policy. It aims to add to the list of considerations when deciding the appropriate function of a road in a network. The questions this project hopes to answer are, “Should Queens Road be seen as a through route?” and “What practical takeaways can we observe from this analytical understanding?”
+
+# Literature Review 
+In their 2022 work Zhuang and Huang considered dynamic traffic assignment and the effects of junctions on Braess paradox rather than understanding the network in a simplified set of flows model without node interactions. They also applied cooperative autonomous vehicles using applied reinforcement learning. More recently, a study by Gao et al. (2021) explored the applications of machine learning in predicting Braess Paradox in transportation networks. They used neural networks to analyse traffic patterns and identify potential Braessian edges, showing promising results in improving prediction accuracy and reducing computational costs. 
+
+Manik (2022), found a new topological understanding of Braess paradox when applied to electrical networks which greatly reduced the computation cost and reduced the intractability, with an overall prediction rate of about 90%. This work was built on the work of Shapiro 1987. Colleta and Jaqoud (2016) managed to prove the phenomena on the British power grid to predict the change in network flows as the result of adding an edge. 
+
+A study by Cohen and Horowitz (1991) examined the impact of network changes in the city of Stuttgart, Germany. Their findings confirmed that the addition of new roads led to increased travel times.In another study, Youn, Gastner, and Jeong (2008) analyzed traffic patterns in Boston and demonstrated that removing certain roads could actually improve overall traffic flow. 
+
+# Methodology
+# Methodological Outline 
+A network was built which contained edges and nodes. The edges were assigned the variables natural time, usage, capacity, perceived time and dynamic time.
+
+ -	Natural time or nat_time, stores the information about the time it takes to get from one end of the edge to another under zero traffic flow. 
+ -	Usage is the variable which stores total traffic flow across an edge.
+ -	Capacity is the constant which determines how the usage impacts the natural time.
+ -	Dynamic time variable computed by a function of natural time, usage, and capacity. 
+ -	Perceived time is variable which stores the perceived time, which is used in one of the algorithms for agent routing. Perceived time is a function of dynamic and natural time. 
+ 
+
+```{python eval=FALSE}
+def calculate_total_dyn_time(Graph, path): # Evaluates the dynamic time across the route
+    total_dyn_time = 0
+    for i in range(len(path) - 1):
+        dyn_time =0
+        u, v = path[i], path[i + 1]
+        edge_key = list(Graph[u][v])[0]
+        dyn_time = Graph[u][v][edge_key]['dyn_time']
+        total_dyn_time += dyn_time
+    return total_dyn_time
+
+```
+
+Agents were generated based on OD pair and routing algorithms, various routing options were considered with agents following either the natural time of the network, dynamic time, or perceived time. 
+
+The model iterated through each agent, picking their route choice based off their individual algorithm. Once each agent had completed their route, there trip time was saved and the edge would be updated dynamically for the next agent. All the routes were saved for graphing purposes. 
+
+The model was used to prove the simple case first. The 4 edge, 4 node parallelogram example where an extra edge is put between edges B and C. Therefore making the shortest path A,B,C,D instead of either A,B,D A,C,D. This reduces the effective capacity of the system by reducing the viable routes from two to one and produces Braess paradox. 
+
+```{python echo=FALSE, results= "hide", fig.cap =  "Classic Braess Example", out.width= "60%"}
+import networkx as nx
+import matplotlib.pyplot as plt
+
+G = nx.Graph()
+
+# Add nodes and edges with varying lengths
+G.add_edge('A', 'B', time=1, capacity=5, usage=0)
+G.add_edge('B', 'C', time=2, capacity=5, usage=0)
+G.add_edge('A', 'C', time=5, capacity=5, usage=0)
+G.add_edge('B', 'D', time=5, capacity=5, usage=0)
+G.add_edge('C', 'D', time=1, capacity=5, usage=0)
+
+#Compute shortest path
+source = 'A'
+target = 'D'
+shortest_path = nx.shortest_path(G, source=source, target=target, weight='time')
+shortest_path_length = nx.shortest_path_length(G, source=source, target=target, weight='time')
+
+#Draw the graph
+pos = nx.spring_layout(G)  # positions for all nodes
+
+# Color nodes
+node_color = []
+for node in G.nodes():
+    if node == source:
+        node_color.append('green')
+    elif node == target:
+        node_color.append('red')
+    else:
+        node_color.append('skyblue')
+
+nx.draw(G, pos, with_labels=True, node_size=700, node_color=node_color, font_size=20, font_weight="bold")
+
+#Highlight shortest path
+shortest_path_edges = [(shortest_path[i], shortest_path[i+1]) for i in range(len(shortest_path)-1)]
+nx.draw_networkx_edges(G, pos, edgelist=shortest_path_edges, edge_color='green', width=4)
+
+##Add edge labels
+edge_labels = nx.get_edge_attributes(G, 'time')
+nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
+
+#Show plot
+plt.title("Graph with Shortest Path", fontsize=20)
+#plt.close()
+#plt.savefig('sine_wave_plot.png')
+
+```
+
+```{r echo = FALSE, results= "hide", fig.align= "center",fig.cap =  "Classic Braess Example"}
+
+library(knitr)
+include_graphics("Network Graph Practice/Images/Basic Braess Graph.png")
+
+```
+
+
+The model was then scaled up to a more complicated but non-realistic network and then a braessian prediction algorithm was created. It took all possible over capacity edges, and then looked for other edges previous which led to the overcapacity edge. This information was used to make decisions about routing. This scenario had mixed success with limited prediction capabilities. It is not yet understood whether that is a flaw in the algorithm, the implementation, or some physical constraint. Like the set of OD pairs across the set of edges contains no braessian edges. For example, reducing capacity at edge x, while it may help y, it makes the problem equally as worse at z and w. There are physical problems with complexity of networks which have high disorder. Which I found in my example. 
+
+```{python echo=FALSE, results = "hide"}
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import matplotlib.patches as mpatches
+import networkx as nx
+
+#--------------------------------
+def Graph(G, agents, suburban_nodes):
+    # Extract start and end nodes from agents
+    start_nodes = [agent['start_node'] for agent in agents]
+    end_nodes = [agent['end_node'] for agent in agents]
+    
+    # Specify node colors
+    node_colors = ['red' if node in end_nodes else 'green' if node in start_nodes else 'grey' if node in suburban_nodes else 'skyblue' for node in G.nodes()]
+    
+    #Draw the graph
+    pos = {(x, y): (x, y) for x, y in G.nodes()}
+    nx.draw(G, pos, with_labels=True, node_size=200, node_color=node_colors, font_size=10)
+    
+    # Color map edge based on usage/capacity ratio
+    usage_cap_ratio = {edge: G.edges[edge]['usage'] / G.edges[edge]['capacity'] for edge in G.edges()}
+    edge_colors = [usage_cap_ratio[edge] for edge in G.edges()]
+    cmap = plt.cm.get_cmap('coolwarm')  # Choose a colormap, e.g., 'viridis'
+    
+    # Define the normalization range
+    norm_min = 0
+    norm_max = 2
+
+    #Draw edges with color mapping
+    norm = plt.Normalize(norm_min, norm_max)
+    edge_colors_mapped = [cmap(norm(edge_color)) for edge_color in edge_colors]
+    nx.draw_networkx_edges(G, pos, edge_color=edge_colors_mapped, width=4, alpha=1)
+    
+     # Legend for edge colors# Legend for edge colors
+    legend_handles_edge = []
+    for ratio in [norm_min, (norm_max - norm_min) / 4, (norm_max - norm_min) / 2,  3*(norm_max - norm_min) / 4, norm_max]:  # Example values for legend
+        color = cmap(norm(ratio))
+        legend_handles_edge.append(mpatches.Patch(color=color, label=f'Usage/Capacity={ratio:.2f}'))
+
+    
+    # Legend for node colors
+    legend_handles_node = [
+        mpatches.Patch(color='red', label='End Node'),
+        mpatches.Patch(color='green', label='Start Node'),
+        mpatches.Patch(color='grey', label='Suburban Node'),
+        mpatches.Patch(color='skyblue', label='Regular Node')
+    ]
+    
+    # Plotting edge color legend
+    plt.legend(handles=legend_handles_edge, title='Edge Colors', loc='upper left')
+    
+    # Creating a separate subplot for node color legend
+    plt.subplot(122)
+    plt.axis('off')
+    plt.legend(handles=legend_handles_node, title='Node Colors', loc='lower left')
+    
+    # Show plot
+    
+    plt.tight_layout()  # Adjust layout to avoid overlapping
+    plt.title("Network for "+ str(len(agents)) + " Agents")
+    plt.close()
+    
+    #show edge attributes 
+    edge_attributes = nx.get_edge_attributes(G, 'usage')
+    for edge, usage in edge_attributes.items():
+        capacity = G.edges[edge]['capacity']
+        nat_time = G.edges[edge]['nat_time']
+        dyn_time = G.edges[edge]['dyn_time']
+        per_time = G.edges[edge]['per_time']
+        print(f"Edge {edge}: Usage={usage}, Capacity={capacity}, Nat Time={nat_time}, Dyn Time={dyn_time}. Per Time={per_time}")
+        
+import matplotlib.pyplot as plt
+import networkx as nx
+import random
+import math
+from collections import Counter
+
+elastic_coeff = 1 ## defines how elastic the response is in the dynamic time calculation 
+
+def calculate_total_dyn_time(Graph, path):
+    total_dyn_time = 0
+    for i in range(len(path) - 1):
+        edge = (path[i], path[i+1])
+        dyn_time = Graph.edges[edge]['dyn_time']
+        total_dyn_time += dyn_time
+    #print("path: ",path,"   total_dyn_time: ", total_dyn_time)
+    return total_dyn_time
+
+# Function to update edge usage
+def update_edge_usage(Graph, path):
+    for i in range(len(path) - 1):
+        u, v = path[i], path[i + 1]
+        if Graph.has_edge(u, v):
+            Graph[u][v]['usage'] += 1
+        else:
+            # Handle the case where the edge doesn't exist
+            pass
+
+
+# Function to update dyn_time based on nat_time, capacity, and usage
+def update_dyn_time(Graph):
+    for u, v, data in Graph.edges(data=True):
+        nat_time = data['nat_time']
+        capacity = data['capacity']
+        usage = data['usage']
+        if usage == 0:
+            # If usage is 0, set dyn_time to nat_time
+            Graph[u][v]['dyn_time'] = nat_time
+        else:
+            # Update dyn_time based on capacity and usage
+            Graph[u][v]['dyn_time'] = nat_time *(1+ math.exp(-elastic_coeff*((capacity - usage) / capacity)))
+            
+
+# Function to update per_time based on nat_time, dyn_time
+def update_per_time(Graph):
+    for u, v, data in Graph.edges(data=True):
+        nat_time = data['nat_time']
+        dyn_time = data['dyn_time']
+        
+        Graph[u][v]['per_time'] = nat_time + (dyn_time-nat_time)/2
+        
+        
+def route_choice(Graph, agent_style, start, end):
+    
+    if agent_style== "Natural":
+        shortest_path = nx.shortest_path(Graph, source=start, target=end, weight='nat_time')
+    elif agent_style== "Dynamic":
+        shortest_path = nx.shortest_path(Graph, source=start, target=end, weight='dyn_time')
+    elif agent_style== "Percieved":
+        shortest_path = nx.shortest_path(Graph, source=start, target=end, weight='per_time')
+    return shortest_path
+    
+    
+# Method for agent to traverse the graph
+##calls all the functions 
+def agent_traverse(Graph, agent):
+    
+    ##picks a path based on the shorted percived time 
+    shortest_path = route_choice(Graph, agent["algorithm"],agent["start_node"],agent["end_node"])
+    
+    ## calculates the time across the chosen path based on the usage and capacity 
+    total_dyn_time = calculate_total_dyn_time(Graph, shortest_path)
+    
+    ##updates the edge parameters 
+    update_edge_usage(Graph,shortest_path) #updates the amount of usage 
+    update_dyn_time(Graph)  # Update dyn_time after usage is updated
+    update_per_time(Graph)  # Update per_time 
+    
+   # return shortest_path, shortest_path_length
+    return shortest_path, total_dyn_time ## returns the path chosen and the time taken 
+
+def network_efficiency(Graph,agents):
+    total_agent_path_length = 0
+    total_agents = 0
+    all_agent_paths = []
+    all_agent_paths_return= []
+
+    for agent in agents:
+        agent_path, agent_path_length = agent_traverse(Graph, agent)
+        print(f"Agent {agent} Path:", agent_path)
+        print(f"Agent {agent} Path Length:", agent_path_length)
+        total_agent_path_length += agent_path_length
+        total_agents += 1
+        all_agent_paths.append(tuple(agent_path))
+        all_agent_paths_return.append([agent_path],)
+        
+    # Find the most common path
+    most_common_path = Counter(all_agent_paths).most_common(1)[0][0]
+    print("Most common path:", most_common_path)
+
+    average_agent_path_length = total_agent_path_length / total_agents
+    print("average path length: ", average_agent_path_length)
+    return all_agent_paths_return ,most_common_path, average_agent_path_length
+
+def reset_edge_attributes(Graph):
+    for u, v, data in Graph.edges(data=True):
+        # Set dyn_time to its initial value 
+        data['dyn_time'] = data['nat_time']
+        # Set per_time to its initial value 
+        data['per_time'] = data['nat_time']
+        if data["node_type"]=="urban":
+            # Set usage to 0
+            data['usage'] = 3
+        elif data["node_type"]=="suburban":
+            # Set usage to 0
+            data['usage'] = 15
+            
+def rank_edges_by_proximity_to_overcapacity(all_paths, overcapacity_edges):
+    ranked_edges = {}
+    overcapacity_index_start = None
+    overcapacity_index_end = None
+    
+    for path in all_paths:
+        path = path[0]
+        
+        for overcapacity_edge in overcapacity_edges:
+            
+            #Find the indices of the start and end nodes of the overcapacity edge in the path
+            for i, edge in enumerate(path[:-1]):  # Iterate over each pair of consecutive nodes
+                
+                if edge == overcapacity_edge[0][0]:
+                    overcapacity_index_start = i
+                elif edge == overcapacity_edge[0][1]:
+                    overcapacity_index_end = i
+            # Calculate the weights for each edge based on their distance from the overcapacity edge
+            if overcapacity_index_start is not None and overcapacity_index_end is not None:
+
+                for i, edge in enumerate(path[:-1]):  # Iterate over each pair of consecutive nodes
+                
+                    weight_start = overcapacity_index_start - i  # Distance from the start overcapacity node
+                    weight_end = overcapacity_index_end - i  # Distance from the end overcapacity node
+                
+                    # If the edge is between the two overcapacity nodes, consider the minimum weight
+                    if weight_start < 1 or weight_end < 1:
+                        weight = 0
+                    else:
+                        weight = min(weight_start, weight_end) 
+            
+                    if weight != 0:
+                        # Form the edge as a tuple of consecutive nodes
+                        ranked_edges[(edge, path[i+1])] = 1 / weight + ranked_edges.get((edge, path[i+1]), 0)
+
+    ##Sort the edges based on their weights
+    sorted_ranked_edges = sorted(ranked_edges.items(), key=lambda x: x[1], reverse=True)
+    return sorted_ranked_edges
+
+def back_predictor(Graph, all_agent_paths):
+    
+    over_capacity_list = []
+    for u, v, data in Graph.edges(data=True):
+        capacity = data['capacity']
+        usage = data['usage']
+        over_capacity = usage- capacity
+        if over_capacity >0:
+            over_capacity_list.append(((u, v), over_capacity))
+    over_capacity_list.sort(key=lambda x: x[1])  # Sort based on over capacity
+    
+    return over_capacity_list
+    
+def add_ranked_edges_attribute(G, ranked_edges):
+    for u, v, data in G.edges(data=True):
+        G[u][v]['ranked_weight'] = 0
+    for edge, weight in ranked_edges:
+        G[edge[0]][edge[1]]['ranked_weight'] = weight
+        
+import random
+
+def generate_agents(algorithms, algorithm_weights, start_nodes, end_nodes, num_agents):
+    """
+    Generate a list of agents with specified algorithms, start nodes, and end nodes.
+
+    Args:
+    - algorithms (list): List of algorithms.
+    - algorithm_weights (list): List of weights corresponding to algorithms.
+    - start_nodes (list): List of tuples representing start nodes with corresponding weights.
+    - end_nodes (list): List of tuples representing end nodes with corresponding weights.
+    - num_agents (int): Number of agents to generate.
+
+    Returns:
+    - agents (list): List of dictionaries representing agents.
+    """
+    agents = []
+    
+    for _ in range(num_agents):
+        start_node = random.choices([node[0] for node in start_nodes], weights=[node[1] for node in start_nodes])[0]
+        end_node = random.choices([node[0] for node in end_nodes], weights=[node[1] for node in end_nodes])[0]
+        algorithm = random.choices(algorithms, weights=algorithm_weights)[0]
+        agent = {'start_node': start_node, 'end_node': end_node, 'algorithm': algorithm}
+        agents.append(agent)
+    
+    return agents
+  
+import networkx as nx
+import random
+
+def generate_city_street_network(rows, cols, min_capacity, max_capacity):
+    G = nx.grid_2d_graph(rows, cols)  # Generate a grid-like graph
+    
+    for u, v in G.edges():
+        capacity = random.randint(min_capacity, max_capacity)
+        nat_time = random.uniform(3, 5.0)  # Random natural time
+        G[u][v]['capacity'] = capacity
+        G[u][v]['nat_time'] = nat_time
+        G[u][v]['usage'] = 3
+        G[u][v]['dyn_time'] = nat_time
+        G[u][v]['per_time'] = nat_time
+        G[u][v]['node_type']= "urban" 
+    return G
+# Example usage
+rows = 7
+cols = 7
+min_capacity = 5
+max_capacity = 10
+
+G_city_leeds = generate_city_street_network(rows, cols, min_capacity, max_capacity)
+G_city_leeds.add_node((-6,0))  # Add Bradford with coordinates (-6, 0)
+G_city_leeds.add_node((-7,-7))  # Add Huddersfield with coordinates (-7, -7)
+G_city_leeds.add_node((2,-5))  # Add Wakefield with coordinates (2, -5)
+G_city_leeds.add_edge((-2,0),(0,1), nat_time=15, capacity=80, usage=0, dyn_time=45, per_time=45, node_type= "suburban")
+G_city_leeds.add_edge((-7,-7),(2,-5), nat_time=45, capacity=40, usage=0, dyn_time=45, per_time=45, node_type= "suburban")
+G_city_leeds.add_edge((2,-5),(-2,0), nat_time=25, capacity=80, usage=0, dyn_time=45, per_time=45, node_type= "suburban")
+G_city_leeds.add_edge((-6,0),(1,6), nat_time=65, capacity=20, usage=0, dyn_time=45, per_time=45, node_type= "suburban")
+G_city_leeds.add_edge((2,-5),(2,0), nat_time=35, capacity=40, usage=0, dyn_time=45, per_time=45, node_type= "suburban")
+G_city_leeds.add_edge((-6,0),(1,6), nat_time=65, capacity=40, usage=0, dyn_time=45, per_time=45, node_type= "suburban")
+G_city_leeds.add_edge((-6,0),(-2,0), nat_time=35, capacity=50, usage=0, dyn_time=45, per_time=45, node_type= "suburban")
+
+algorithms = ['Dynamic', 'Natural', 'Percieved']
+algorithm_weights = [0, 0.7, 0.3]
+start_nodes = [((-7,-7), 0.2), ((2,-5), 0.3), ((-6,0), 0.5)]
+end_nodes = [((6,4), 0.1), ((4,2), 0.2), ((5,3), 0.2), ((5,2), 0.1), ((3,4), 0.1), ((2,5), 0.2), ((2,3), 0.1)]
+
+agents = generate_agents(algorithms, algorithm_weights, start_nodes, end_nodes, num_agents=95)
+
+# Print the list of agents
+for idx, agent in enumerate(agents):
+    print(f"Agent {idx + 1}: Start Node={agent['start_node']}, End Node={agent['end_node']}, Algorithm={agent['algorithm']}")
+    
+suburban_nodes = ((-7,-7),(-6,0),(2,-5))
+reset_edge_attributes(G_city_leeds)
+
+# Calculate network efficiency
+all_paths, most_common_path, avg_path_len = network_efficiency(G_city_leeds,agents)
+
+Graph(G_city_leeds, agents, suburban_nodes) 
+
+```
+
+```{r echo = FALSE, fig.cap="Complicated Theoretical Example, the red lines show the over capacity edges", fig.align="center" ,out.width= "75%"}
+
+library(knitr)
+include_graphics("Network Graph Practice/Images/complicated_example.png")
+
+```
+
+
+```{r echo = FALSE, fig.cap="Complicated Theoretical Example Back Predictor, the red lines show the edges which apear in the paths of future over capacity edges.  ",fig.align='center', out.width= "75%"}
+
+library(knitr)
+include_graphics("Network Graph Practice/Images/complicated_example_ranked_edges.png")
+
+```
+ 
+ 
+Figure 2 A more complicated theoretical example.
+After limited success in a non-realistic network, a realistic network was found. Open Street Map network for Leicester was downloaded and Queens Road was chosen as the target road for inspection. It possessed many qualities that would lead it to Braessian behaviour, it was a short cut between a set of consequential OD pairs which led from south to central Leicester, particularly on route the train station. Queens road its self-had less capacity than the two A-roads either side that it bypassed; however, travel time was shorter. It also started and ended on trunk roads which led to A-roads, another classic feature in Braessian Networks. 
+The network was processed to get it into the same format as the above networks, edges with low centrality were trimmed and a set of OD pairs were put through the system. The average time of path was taken as the metric for comparison. Discussion on the results and the data cleaning process will follow in later sections. 
+
+Figure 3 shows the workings of the back predictor alogrithm that had moderate sucess.
+
+# Data Cleaning 
+
+```{python eval = FALSE}
+def clean_speed_limit(G):
+    speed_dictionary = {
+        "primary": 40, "motorway": 70, "secondary": 30, "residential": 20,
+        "service": 40, "trunk": 70, "other": 20, "tertiary": 20
+    }
+    
+    for u, v, key, data in G.edges(data=True, keys=True):
+        speed = data.get('maxspeed', None)
+        clean_speed = None
+
+        # Handle speeds provided as lists
+        if isinstance(speed, list):
+            cleaned_speeds = []
+            for s in speed:
+                if 'mph' in s:
+                    cleaned_speeds.append(int(s.replace(' mph', '')) * 0.44704)
+                elif 'km/h' in s:
+                    cleaned_speeds.append(int(float(s.replace(' km/h', '')) * 0.621371 * 0.44704))
+            clean_speed = max(cleaned_speeds) if cleaned_speeds else None
+```
+
+```{python echo = FALSE}
+import osmnx as ox
+import pandas as pd
+import networkx as nx
+import matplotlib.pyplot as plt
+import geopandas as gpd
+import pandas as pd
+
+def clean_speed_limit(G):
+    speed_dictionary = {
+        "primary": 40, "motorway": 70, "secondary": 30, "residential": 20,
+        "service": 40, "trunk": 70, "other": 20, "tertiary": 20
+    }
+    
+    for u, v, key, data in G.edges(data=True, keys=True):
+        speed = data.get('maxspeed', None)
+        clean_speed = None
+
+        # Handle speeds provided as lists
+        if isinstance(speed, list):
+            cleaned_speeds = []
+            for s in speed:
+                if 'mph' in s:
+                    cleaned_speeds.append(int(s.replace(' mph', '')) * 0.44704)
+                elif 'km/h' in s:
+                    cleaned_speeds.append(int(float(s.replace(' km/h', '')) * 0.621371 * 0.44704))
+            clean_speed = max(cleaned_speeds) if cleaned_speeds else None
+
+        # Handle speeds provided as strings
+        elif isinstance(speed, str):
+            if 'mph' in speed:
+                clean_speed = int(speed.replace(' mph', '')) * 0.44704
+            elif 'km/h' in speed:
+                clean_speed = int(float(speed.replace(' km/h', '')) * 0.621371 * 0.44704)
+            else:
+                try:
+                    clean_speed = int(speed) * 0.44704  # Convert direct integers to m/s
+                except ValueError:
+                    print(f"Unexpected type or format at edge ({u}, {v}): {speed}")
+                    continue
+
+        # Use the highway type to set a default speed
+        if clean_speed is None:
+            highway_type = data.get('highway', 'other')
+            # Ensure highway_type is not a list
+            if isinstance(highway_type, list):
+                highway_type = highway_type[0] if highway_type else 'other'
+            clean_speed = speed_dictionary.get(highway_type, 20) * 0.44704
+
+        # Assign the cleaned speed back to the data
+        data['speed_m/s'] = clean_speed
+
+    return G
+
+```
+
+### Speed Variable
+The downloaded driving network from Open Street Map contained street speeds in mph as strings. These were cleaned, handling the cases when they were lists. Converted into ms^(-1). If no speed was found the highway type was used to set an estimated speed and if both variables were missing then a default of 20mph was set, which then was converted to ms^(-1).
+
+### Natural Time
+This was processed as the length/speed, this variable was in seconds.
+
+### Capacity
+A dictionary was used, capacity was set based on highway type. With a default capacity being set at the level of a tertiary road. Lists were also handled with the first element being taken. Considering this is not meant to be a demonstrative transport model given the time constraints, simple relative values were used. 
+
+### Usage 
+This variable was set to 0 as background, to reduce the complexity of the model and make it more intelligible.
+
+## Edge Trimming
+Edges with low centrality were trimmed, only leaving the basic route network. This was done for a few reasons. 
+
+1. Nodal interactions were not considered in this model, so adding a lot of entry point to main roads would not be suitably modelled. 
+2. The intelligibility and reproducibility of results is increased with a simpler network. 
+3. Edges of low centrality naturally are less important than high centrality edges. 
+4. The result is more generalisable if the minor interactions are ignored. 
+
+```{python echo=FALSE}
+def nat_time(G): 
+    
+    for u, v, data in G.edges(data=True):
+        # Use get method to safely access 'maxspeed' key with a default of None
+        speed = data.get('maxspeed', None)
+
+        data["nat_time"] = data["length"]/data["speed_m/s"]
+
+    return 
+```
+
+```{python echo=FALSE}
+def Capacity(G):
+    capacity_dictionary = {
+        "primary": 100, "motorway": 200, "secondary": 50, "residential": 10,
+        "service": 70, "trunk": 70, "other": 10, "tertiary": 20
+    }
+    
+    for u, v, data in G.edges(data=True):
+        name = data["highway"]
+        # Correcting the type check for a list
+        if isinstance(name, list):
+            name = name[0]  # Use the first type if there are multiple types
+        
+        # Using get to avoid KeyErrors if the highway type is not in the dictionary
+        data["capacity"] = capacity_dictionary.get(name, 20)  # Default capacity is 20 if not found
+        
+    return   # Optional: return the graph if you want to chain or validate
+  
+  
+def other_edge_attributes(G):
+    for u, v, key, data in G.edges(keys=True, data=True):
+        data["usage"] = 0
+        data["dyn_time"] = data["nat_time"]
+        data["per_time"] = data["nat_time"]
+    return
+
+```
+
+
+```{python echo= FALSE}
+import random
+def generate_agents(G, algorithms, algorithm_weights, orig_points, dest_points, num_agents, start_nodes, end_nodes, using_nodes=True):
+    """
+    Generate a list of agents with specified algorithms, start nodes, and end nodes.
+
+    Args:
+    - algorithms (list): List of algorithms.
+    - algorithm_weights (list): List of weights corresponding to algorithms.
+    - start_nodes (list): List of tuples representing start nodes with corresponding weights.
+    - end_nodes (list): List of tuples representing end nodes with corresponding weights.
+    - num_agents (int): Number of agents to generate.
+
+    Returns:
+    - agents (list): List of dictionaries representing agents.
+    """
+    if using_nodes is False: 
+        start_nodes, end_nodes=  convert_points_to_nodes(orig_points, dest_points, G)
+        
+    agents = []
+    
+    for _ in range(num_agents):
+        start_node = random.choices([node[0] for node in start_nodes], weights=[node[1] for node in start_nodes])[0]
+        end_node = random.choices([node[0] for node in end_nodes], weights=[node[1] for node in end_nodes])[0]
+        algorithm = random.choices(algorithms, weights=algorithm_weights)[0]
+        agent = {'start_node': start_node, 'end_node': end_node, 'algorithm': algorithm}
+        agents.append(agent)
+    
+    return agents
+```
+
+```{python echo=FALSE ,results= "hide"}
+
+from shapely.geometry import Point
+
+def convert_points_to_nodes(orig_points, dest_points, G):
+    
+    orig_nodes = []
+    dest_nodes = []
+    
+    for orig_tuple in orig_points:
+        orig_point = orig_tuple[0]
+        orig_weight = orig_tuple[1]
+
+        # Get longitude and latitude from the points
+        orig_node_lon, orig_node_lat = orig_point.x, orig_point.y
+        print(orig_node_lon, orig_node_lat , orig_point.x, orig_point.y)
+        orig_node = ox.distance.nearest_nodes(G, orig_node_lon, orig_node_lat)
+        print("orig_node", orig_node)
+        orig_nodes.append((orig_node,orig_weight))
+        
+    
+    for dest_tuple in dest_points:
+        dest_point = dest_tuple[0]
+        dest_weight = dest_tuple[1]
+        
+        dest_node_lon, dest_node_lat = dest_point.x, dest_point.y
+                
+        print(dest_node_lon, dest_node_lat ,dest_point.x, dest_point.y)
+        dest_node = ox.distance.nearest_nodes(G, dest_node_lon, dest_node_lat)
+        print ("dest_node", dest_node)
+        dest_nodes.append((dest_node,dest_weight))
+    
+    return orig_nodes, dest_nodes
+
+
+```
+
+
+```{python echo=FALSE }
+import networkx as nx
+import random
+import math
+from collections import Counter
+import matplotlib.pyplot as plt
+
+elastic_coeff = 1  # defines how elastic the response is in the dynamic time calculation
+
+def calculate_total_dyn_time(Graph, path):
+    total_dyn_time = 0
+    for i in range(len(path) - 1):
+        dyn_time =0
+        u, v = path[i], path[i + 1]
+        # Assuming we are picking the first available edge by default
+        edge_key = list(Graph[u][v])[0]
+        dyn_time = Graph[u][v][edge_key]['dyn_time']
+        total_dyn_time += dyn_time
+    
+    return total_dyn_time
+
+def update_edge_usage(Graph, path):
+    for i in range(len(path) - 1):
+        u, v = path[i], path[i + 1]
+        edge_key = list(Graph[u][v])[0]  # Pick the first available edge by default
+        if Graph.has_edge(u, v, edge_key):
+            Graph[u][v][edge_key]['usage'] += 1
+
+def update_dyn_time(Graph):
+    for u, v, key in Graph.edges(keys=True):
+        data = Graph[u][v][key]
+        #print(data)
+        nat_time = data['nat_time']
+        capacity = data['capacity']
+        usage = data['usage']
+        #print(capacity)
+        if capacity == 0:
+            capacity =5 ## defualt error value
+        if usage == 0:
+            Graph[u][v][key]['dyn_time'] = nat_time
+        else:
+            Graph[u][v][key]['dyn_time'] = nat_time * (1+  (usage / capacity))
+
+def update_per_time(Graph):
+    for u, v, key in Graph.edges(keys=True):
+        data = Graph[u][v][key]
+        nat_time = data['nat_time']
+        dyn_time = data['dyn_time']
+        Graph[u][v][key]['per_time'] = nat_time + (dyn_time - nat_time) / 2
+
+def route_choice(Graph, agent_style, start, end):
+    if agent_style == "Natural":
+        shortest_path = nx.shortest_path(Graph, source=start, target=end, weight='nat_time')
+    elif agent_style == "Dynamic":
+        shortest_path = nx.shortest_path(Graph, source=start, target=end, weight='dyn_time')
+    elif agent_style == "Percieved":
+        shortest_path = nx.shortest_path(Graph, source=start, target=end, weight='per_time')
+    return shortest_path
+
+def agent_traverse(Graph, agent):
+    shortest_path = route_choice(Graph, agent["algorithm"], agent["start_node"], agent["end_node"])
+    total_dyn_time = calculate_total_dyn_time(Graph, shortest_path)
+    update_edge_usage(Graph, shortest_path)
+    update_dyn_time(Graph)
+    update_per_time(Graph)
+    #print("total dyn time: ", total_dyn_time)
+    return shortest_path, total_dyn_time
+
+def network_efficiency(Graph, agents):
+    total_agent_path_length = 0
+    total_agents = 0
+    all_agent_paths = []
+    all_agent_paths_return = []
+
+    for agent in agents:
+        agent_path, agent_path_length = agent_traverse(Graph, agent)
+       # print(f"Agent {agent} Path:", agent_path)
+       # print(f"Agent {agent} Path Length:", agent_path_length)
+        total_agent_path_length += agent_path_length
+        total_agents += 1
+        all_agent_paths.append(tuple(agent_path))
+        all_agent_paths_return.append([agent_path])
+
+    most_common_path = Counter(all_agent_paths).most_common(1)[0][0]
+    average_agent_path_length = total_agent_path_length / total_agents
+   # print("Most common path:", most_common_path)
+    #print("average path length: ", average_agent_path_length)
+    return all_agent_paths_return, most_common_path, average_agent_path_length
+def reset_edge_attributes(Graph):
+    for u, v, key in Graph.edges(keys=True):
+        data = Graph[u][v][key]
+        data['dyn_time'] = data['nat_time']
+        data['per_time'] = data['nat_time']
+        if data["node_type"] == "urban":
+            data['usage'] = 3
+        elif data["node_type"] == "suburban":
+            data['usage'] = 15
+
+```
+
+```{python echo = FALSE}
+def filter_highway_types(G):
+    
+    allowed_types = [
+        "primary" ,"motorway" ,"secondary"
+        "service",  "trunk" , "tertiary" ]
+    
+    # Create a list to hold edges that do not meet the criteria
+    edges_to_remove = []
+
+    # Iterate over all edges in the graph
+    for u, v, data in G.edges(data=True):
+        highway_type = data.get('highway', None)
+
+        # Check if the highway type is a list (sometimes multiple types are tagged)
+        if isinstance(highway_type, list):
+            # Check if there is no intersection with allowed types
+            if not any(ht in allowed_types for ht in highway_type):
+                edges_to_remove.append((u, v))
+        elif highway_type not in allowed_types:
+            # If the highway type is not in the allowed list
+            edges_to_remove.append((u, v))
+
+    # Remove the unwanted edges
+    G.remove_edges_from(edges_to_remove)
+    
+    return G
+
+def remove_edges_by_name(G, edge_name):
+    
+    # List to store edges to be removed to avoid modifying the graph while iterating
+    edges_to_remove = []
+
+    # Iterate through all edges and check the 'name' attribute
+    for u, v, data in G.edges(data=True):
+        if data.get('name') == edge_name:
+            edges_to_remove.append((u, v))
+
+    # Remove the collected edges
+    for u, v in edges_to_remove:
+        G.remove_edge(u, v)
+        print(f"Removed edge ({u}, {v}) with name '{edge_name}'")
+    return G
+
+
+def retain_edges_by_names(G, names_to_keep):
+  
+    # List to store edges to be removed to avoid modifying the graph while iterating
+    edges_to_remove = []
+
+    # Iterate through all edges and check the 'name' attribute
+    for u, v, data in G.edges(data=True):
+        if data.get('name') not in names_to_keep:
+            edges_to_remove.append((u, v))
+
+    # Remove the collected edges
+    for u, v in edges_to_remove:
+        G.remove_edge(u, v)
+        print(f"Removed edge ({u}, {v}) not in the specified names to keep")
+
+    return G
+
+
+
+```
+
+
+```{python echo=FALSE}
+
+import networkx as nx
+
+def calculate_edge_betweenness_for_od_pairs(G, od_pairs):
+    edge_count = {}
+    for (origin, destination) in od_pairs:
+        try:
+            # Find the shortest path
+            path = nx.shortest_path(G, source=origin, target=destination)
+            # Count edges in the path
+            for i in range(len(path) - 1):
+                u, v = path[i], path[i + 1]
+                # Handle multigraph
+                if G.is_multigraph():
+                    for key in G[u][v]:
+                        edge = (u, v, key)
+                        if edge not in edge_count:
+                            edge_count[edge] = 0
+                        edge_count[edge] += 1
+                else:
+                    edge = (u, v)
+                    if edge not in edge_count:
+                        edge_count[edge] = 0
+                    edge_count[edge] += 1
+        except nx.NetworkXNoPath:
+            print(f"No path between {origin} and {destination}")
+
+    # Normalize the edge counts if necessary
+    total_paths = len(od_pairs)
+    edge_betweenness = {edge: count / total_paths for edge, count in edge_count.items()}
+
+    # Add the calculated edge betweenness to the graph as an edge attribute
+    nx.set_edge_attributes(G, edge_betweenness, 'edge_betweenness')
+
+```
+
+
+```{python echo=FALSE}
+def calculate_total_effective_capacity(G,no_agents ):
+    total_effective_capacity = 0
+    
+    #Iterate over all edges to calculate the total effective capacity
+    for (u, v, data) in G.edges(data=True):
+        # Extract edge attributes, ensuring they are treated as numbers
+        bc = data.get('edge_betweenness', 0)  # ensure this defaults to 0 if not present
+        capacity = data.get('capacity', 1)  # ensure this defaults to 1 if not present
+        nat_time = data.get('nat_time', 1)  # ensure this defaults to 1 if not present, assuming nat_time is a numeric attribute
+        
+        flow  = no_agents*bc 
+        dyn_time  = 1 + (flow/capacity)
+        
+        if capacity > 0 and bc > 0:  # Avoid division by zero
+            edge_effective_capacity =  flow*nat_time*( 1 + (flow/capacity)) 
+            
+            
+        else:
+            edge_effective_capacity = 0  # Assign zero if capacity or bc is zero to avoid division by zero
+
+        # Accumulate the calculated capacity into the total
+        total_effective_capacity += edge_effective_capacity
+
+    return total_effective_capacity/no_agents
+```
+
+
+```{python, echo= FALSE}
+
+import matplotlib.pyplot as plt
+import networkx as nx
+import osmnx as ox
+import numpy as np
+
+def plot_eff_cap(G, orig, dest, save ):
+    """
+    Plot a NetworkX graph with edges colored by the ratio of usage to capacity, and highlight and label start and end nodes, with unique road labels.
+
+    Parameters:
+    - G (NetworkX Graph): A graph with 'usage' and 'capacity' edge attributes.
+    - orig (list): List of starting node IDs.
+    - dest (list): List of ending node IDs.
+
+    Effects:
+    - Displays a matplotlib plot of the graph with edges colored according to their 'usage_to_capacity' ratio,
+      and highlights and labels the start and end nodes and roads.
+    """
+    usage_to_capacity = []
+    for u, v, key, data in G.edges(keys=True, data=True):
+        if 'usage' in data and 'capacity' in data and data['capacity'] > 0:
+            data['usage_to_capacity'] = data['usage'] / data['capacity']
+        else:
+            data['usage_to_capacity'] = 0  #Handle cases with missing attributes or zero capacity
+        usage_to_capacity.append(data['usage_to_capacity'])
+
+    # Normalize and get edge colors based on 'usage_to_capacity'
+    nc = ox.plot.get_edge_colors_by_attr(G, 'usage_to_capacity', cmap='coolwarm')
+
+    # Plot the graph using OSMnx with custom edge colors
+    fig, ax = ox.plot_graph(
+        G,
+        edge_color=nc,
+        node_size=0,
+        node_zorder=2,
+        edge_linewidth=2,
+        bgcolor='k',
+        show=False,  # Prevent showing the plot immediately
+        close=False  # Prevent closing the plot immediately
+    )
+
+    # Add title, axis labels, and legend
+    sm = plt.cm.ScalarMappable(cmap='coolwarm', norm=plt.Normalize(vmin=min(usage_to_capacity), vmax=max(usage_to_capacity)))
+    sm.set_array([])
+
+    cbar = fig.colorbar(sm, ax=ax, orientation='vertical', fraction=0.03, pad=0.04)
+    cbar.set_label('Usage to Capacity Ratio', fontsize=14)
+
+    plt.title('Network Graph with Edges Colored by \n Usage to Capacity Ratio', fontsize=16)
+    plt.xlabel('Longitude', fontsize=14)
+    plt.ylabel('Latitude', fontsize=14)
+
+    # Highlight and label start and end nodes
+    start_node_color = 'lime'
+    end_node_color = 'red'
+    start_node_size = 100
+    end_node_size = 100
+
+    for node in orig:
+        x, y = G.nodes[node]['x'], G.nodes[node]['y']
+        ax.scatter(x, y, c=start_node_color, s=start_node_size, edgecolors='black', label='Start Node')
+        ax.annotate(f'Start {node}', (x, y), textcoords="offset points", xytext=(0, 10), ha='center', color='white', fontsize=10)
+
+    for node in dest:
+        x, y = G.nodes[node]['x'], G.nodes[node]['y']
+        ax.scatter(x, y, c=end_node_color, s=end_node_size, edgecolors='black', label='End Node')
+        ax.annotate(f'End {node}', (x, y), textcoords="offset points", xytext=(0, 10), ha='center', color='white', fontsize=10)
+
+    # Label roads uniquely at their midpoints
+    road_midpoints = {}
+    for u, v, key, data in G.edges(keys=True, data=True):
+        if 'name' in data:
+            midpoint_x = (G.nodes[u]['x'] + G.nodes[v]['x']) / 2
+            midpoint_y = (G.nodes[u]['y'] + G.nodes[v]['y']) / 2
+            if data['name'] not in road_midpoints:
+                road_midpoints[data['name']] = []
+            road_midpoints[data['name']].append((midpoint_x, midpoint_y))
+
+    for road_name, midpoints in road_midpoints.items():
+        avg_x = np.mean([x for x, y in midpoints])
+        avg_y = np.mean([y for x, y in midpoints])
+        ax.annotate(road_name, (avg_x, avg_y), textcoords="offset points", xytext=(0, 10), ha='center', color='white', fontsize=8)
+
+    # Ensure that the legend does not duplicate entries
+    handles, labels = ax.get_legend_handles_labels()
+    unique_handles = []
+    unique_labels = []
+    for handle, label in zip(handles, labels):
+        if label not in unique_labels:
+            unique_handles.append(handle)
+            unique_labels.append(label)
+    ax.legend(unique_handles, unique_labels, fontsize=12)
+    
+    if save == True:
+        file_string = f"{str(G)}_{no_agents}.png"
+        plt.savefig(file_string, dpi=600, bbox_inches='tight')
+    
+    # Show plot
+    plt.show()
+
+```
+
+```{python echo = FALSE}
+import osmnx as ox
+import networkx as nx
+
+def prepare_and_adjust_graph():
+    
+    # Example usage of the function:
+    names_to_keep = ["Queens Road", 'Knighton Road', "Chapel Lane", "Welford Road",
+                 "Victoria Park Road", "London Road", "Palmerston Way"]
+    north = 52.59380748677652
+    east = -1.1292476311337287
+    south = 52.63371285448154
+    west = -1.0880800005905862
+
+    # Create the graph from the bounding box
+    G = ox.graph_from_bbox(north, south, east, west, network_type='drive')
+
+    # Convert the network into geodataframes
+    gdf_nodes, gdf_edges = ox.graph_to_gdfs(G)
+
+    # Apply various functions to modify the graph's attributes
+    Capacity(G)
+    clean_speed_limit(G)
+    nat_time(G)
+    other_edge_attributes(G)
+
+    # Retain only specified edges by names
+    retain_edges_by_names(G, names_to_keep)
+
+    # Identify and remove isolated nodes
+    isolated = list(nx.isolates(G))
+    G.remove_nodes_from(isolated)
+
+    return G
+
+```
+
+```{python echo = FALSE,results= "hide"}
+G_queens = prepare_and_adjust_graph()
+G_no_queens = prepare_and_adjust_graph()
+edge_name = "Queens Road"
+remove_edges_by_name(G_no_queens, edge_name)
+
+```
+
+```{python echo = FALSE}
+# starting params:
+algorithms = ['Dynamic', 'Natural', 'Percieved']
+algorithm_weights = [0,  0.7, 0.3]
+orig_points = 2 ##dummy variables
+dest_points = 3 ## dummmy
+## these are nodes at each corner of the graph.
+orig = [2384505898 , 10868806]
+dest = [248185984,1074587965 ]
+start_nodes = [(orig[0],0.7),(orig[1],0.3)]
+end_nodes = [(dest[0],0.7),(dest[1],0.3)]
+using_nodes = True
+
+no_agents_list = [5,10,15,20,25,30,40,50,60,70,80,90,100,125,150,175,200,300,400,500,600]
+# Initialize lists to store the results
+results = []
+
+#Loop through each number of agents
+for no_agents in no_agents_list:
+    # Generate agents
+    agents_ = generate_agents(G_queens, algorithms, algorithm_weights, orig_points, dest_points, no_agents, start_nodes, end_nodes, using_nodes)
+    
+    # Calculate metrics for network without queens
+    other_edge_attributes(G_no_queens)
+    _, _, avg_path_len_no_queens = network_efficiency(G_no_queens, agents_)
+    
+    # Calculate metrics for network with queens
+    other_edge_attributes(G_queens)
+    _, _, avg_path_len_queens = network_efficiency(G_queens, agents_)
+    
+    # Append the results to the list
+    results.append([no_agents, avg_path_len_no_queens, avg_path_len_queens])
+
+# Create a DataFrame from the results
+Braess_v_no_agents = pd.DataFrame(results, columns=['no_agents', 'avg_path_len_no_queens', 'avg_path_len_queens'])
+
+Braess_v_no_agents.to_csv('Braess_v_no_agents.csv', index=False)
+
+df=Braess_v_no_agents
+
+
+```
+
+# Results 
+The model could validate the classical simple model of Braess theorem. The model struggled with predicting complicated scenarios, however to this date there is still no generalisable analytical solution to this. The model did well in forming the policy case around Queens roads use as a through road. 
+
+### Results Queens Road
+
+```{r echo = FALSE, fig.cap="Two Graphs, showing road usage with high traffic. Queens Road on the left, Queens Road removed on the right." ,out.width= "50%", fig.show='hold'}
+
+library(knitr)
+include_graphics("Network Graph Practice/Images/queens.png")
+
+include_graphics("Network Graph Practice/Images/no_queens.png")
+```
+
+
+  
+
+This is a graph of Queens Road with over capacity edges shown in red, Queens road shows clear braessian behaviour from a qualitative perspective. There are two high-capacity routes being bypassed for the shorter more direct route, whilst at the same time causing traffic on the two lateral routes needed to go from the bottom of Welford Road to the top of London Road or vice versa. This is borne out in the data below, which shows the model being run with a different number of agents and how the path length changes. Note there are 4 total routes that can be taken in this scenario, the OD pair which shows the braessian behaviour is the bottom of Welford Road to the top of London road. 
+
+```{r, echo=FALSE}
+
+knitr::opts_chunk$set(fig.show="asis",  out.width= "100%")
+
+```
+
+```{python my-chunk4, echo = FALSE, results= "hide", out.width = "90%", fig.show = "asis", fig.cap =  "Travel time versus agents showing clear Braessian behviour, Multiple OD pair."}
+#echo = FALSE, results= "hide", fig.cap= "Travel time versus agents showing clear #Braessian behviour, Multiple OD pair." }
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.signal import savgol_filter
+
+# Calculate the ratio of queens to no queens
+df['ratio_queens_no_queens'] = df['avg_path_len_queens'] / df['avg_path_len_no_queens']
+
+# Plot the results
+fig, ax1 = plt.subplots(figsize=(12, 8))
+
+# Plot the average path lengths
+ax1.plot(df['no_agents'], df['avg_path_len_no_queens'], label='No Queens', marker='o', color='blue')
+ax1.plot(df['no_agents'], df['avg_path_len_queens'], label='With Queens', marker='o', color='green')
+
+# Set the x-axis to a logarithmic scale
+ax1.set_xscale('log')
+
+# Highlight the inflection point where the lines cross
+for i in range(len(df) - 1):
+    if (df['avg_path_len_no_queens'][i] < df['avg_path_len_queens'][i] and df['avg_path_len_no_queens'][i+1] > df['avg_path_len_queens'][i+1]) or \
+       (df['avg_path_len_no_queens'][i] > df['avg_path_len_queens'][i] and df['avg_path_len_no_queens'][i+1] < df['avg_path_len_queens'][i+1]):
+        inflection_x = (df['no_agents'][i] + df['no_agents'][i+1]) / 2
+        inflection_y_no_queens = (df['avg_path_len_no_queens'][i] + df['avg_path_len_no_queens'][i+1]) / 2
+        inflection_y_queens = (df['avg_path_len_queens'][i] + df['avg_path_len_queens'][i+1]) / 2
+        inflection_y = (inflection_y_no_queens + inflection_y_queens) / 2
+        ax1.scatter(inflection_x, inflection_y, color='red', zorder=5)
+        ax1.annotate(f'Inflection Point (x={inflection_x:.2f})', (inflection_x, inflection_y), textcoords="offset points", xytext=(-15, -10), ha='center', color='red')
+
+# Labels and title for the first y-axis
+ax1.set_title('Average Path Length Comparison with and without Queens Road', fontsize=20)
+ax1.set_xlabel('Number of Agents (log scale)', fontsize=18)
+ax1.set_ylabel('Average Path Length (seconds)', fontsize=18)
+ax1.legend(loc='upper left', fontsize=12)
+ax1.grid(True)
+
+# Increase tick label size
+ax1.tick_params(axis='both', which='major', labelsize=12)
+
+# Create a second y-axis to plot the ratio
+ax2 = ax1.twinx()
+#ax2.plot(df['no_agents'], df['ratio_queens_no_queens'], label='Ratio (Queens/No Queens)', marker='o', color='orange', linestyle='--')
+
+# Smooth the ratio line using Savitzky-Golay filter
+smooth_ratio = savgol_filter(df['ratio_queens_no_queens'], window_length=3, polyorder=1)
+ax2.plot(df['no_agents'], smooth_ratio, label='Smoothed Ratio (Queens/No Queens)', color='yellow', linestyle='-')
+
+ax2.set_ylabel('Ratio (Queens/No Queens)', fontsize=18)
+ax2.legend(loc='upper right', fontsize=12)
+
+# Increase tick label size
+ax2.tick_params(axis='both', which='major', labelsize=12)
+
+plt.savefig('network_efficiency_comparison.png', dpi=600, bbox_inches='tight')
+plt.show()
+
+```
+
+```{python echo = FALSE}
+# starting params:
+algorithms = ['Dynamic', 'Natural', 'Percieved']
+algorithm_weights = [0,  0.7, 0.3]
+orig_points = 2 ##dummy variables
+dest_points = 3 ## dummmy
+## these are nodes at each corner of the graph.
+orig = [2384505898 , 10868806]
+dest = [248185984,1074587965 ]
+start_nodes = [(orig[0],1)]
+end_nodes = [(dest[0],1)]
+using_nodes = True
+
+no_agents_list = [5,10,15,20,25,30,40,50,60,70,80,90,100,125,150,175,200,300,400,500,600]
+# Initialize lists to store the results
+results = []
+
+# Loop through each number of agents
+for no_agents in no_agents_list:
+    # Generate agents
+    agents_ = generate_agents(G_queens, algorithms, algorithm_weights, orig_points, dest_points, no_agents, start_nodes, end_nodes, using_nodes)
+    
+    # Calculate metrics for network without queens
+    other_edge_attributes(G_no_queens)
+    _, _, avg_path_len_no_queens = network_efficiency(G_no_queens, agents_)
+    
+    # Calculate metrics for network with queens
+    other_edge_attributes(G_queens)
+    _, _, avg_path_len_queens = network_efficiency(G_queens, agents_)
+    
+    # Append the results to the list
+    results.append([no_agents, avg_path_len_no_queens, avg_path_len_queens])
+
+# Create a DataFrame from the results
+Braess_v_no_agents = pd.DataFrame(results, columns=['no_agents', 'avg_path_len_no_queens', 'avg_path_len_queens'])
+
+# Optionally, save the DataFrame to a CSV file
+Braess_v_no_agents.to_csv('Braess_v_no_agents.csv', index=False)
+
+df=Braess_v_no_agents
+
+
+
+```
+
+
+```{python my-chunk1, echo = FALSE, results= "hide", out.width = "100%", fig.show = "asis", fig.cap =  "Travel time versus agents showing clear Braessian behviour, single OD pair."}
+#echo = FALSE, results= "hide", fig.cap =  }
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.signal import savgol_filter
+
+# Calculate the ratio of queens to no queens
+df['ratio_queens_no_queens'] = df['avg_path_len_queens'] / df['avg_path_len_no_queens']
+
+# Plot the results
+fig, ax1 = plt.subplots(figsize=(12, 8))
+
+# Plot the average path lengths
+ax1.plot(df['no_agents'], df['avg_path_len_no_queens'], label='No Queens', marker='o', color='blue')
+ax1.plot(df['no_agents'], df['avg_path_len_queens'], label='With Queens', marker='o', color='green')
+
+# Set the x-axis to a logarithmic scale
+ax1.set_xscale('log')
+
+# Highlight the inflection point where the lines cross
+for i in range(len(df) - 1):
+    if (df['avg_path_len_no_queens'][i] < df['avg_path_len_queens'][i] and df['avg_path_len_no_queens'][i+1] > df['avg_path_len_queens'][i+1]) or \
+       (df['avg_path_len_no_queens'][i] > df['avg_path_len_queens'][i] and df['avg_path_len_no_queens'][i+1] < df['avg_path_len_queens'][i+1]):
+        inflection_x = (df['no_agents'][i] + df['no_agents'][i+1]) / 2
+        inflection_y_no_queens = (df['avg_path_len_no_queens'][i] + df['avg_path_len_no_queens'][i+1]) / 2
+        inflection_y_queens = (df['avg_path_len_queens'][i] + df['avg_path_len_queens'][i+1]) / 2
+        inflection_y = (inflection_y_no_queens + inflection_y_queens) / 2
+        ax1.scatter(inflection_x, inflection_y, color='red', zorder=5)
+        ax1.annotate(f'Inflection Point (x={inflection_x:.2f})', (inflection_x, inflection_y), textcoords="offset points", xytext=(-15, -10), ha='center', color='red')
+
+# Labels and title for the first y-axis
+ax1.set_title('Average Path Length Comparison with and without Queens Road', fontsize=20)
+ax1.set_xlabel('Number of Agents (log scale)', fontsize=18)
+ax1.set_ylabel('Average Path Length (seconds)', fontsize=18)
+ax1.legend(loc='upper left', fontsize=12)
+ax1.grid(True)
+
+# Increase tick label size
+ax1.tick_params(axis='both', which='major', labelsize=12)
+
+# Create a second y-axis to plot the ratio
+ax2 = ax1.twinx()
+#ax2.plot(df['no_agents'], df['ratio_queens_no_queens'], label='Ratio (Queens/No Queens)', marker='o', color='orange', linestyle='--')
+
+# Smooth the ratio line using Savitzky-Golay filter
+smooth_ratio = savgol_filter(df['ratio_queens_no_queens'], window_length=3, polyorder=1)
+ax2.plot(df['no_agents'], smooth_ratio, label='Smoothed Ratio (Queens/No Queens)', color='yellow', linestyle='-')
+
+ax2.set_ylabel('Ratio (Queens/No Queens)', fontsize=18)
+ax2.legend(loc='upper right', fontsize=12)
+
+# Increase tick label size
+ax2.tick_params(axis='both', which='major', labelsize=12)
+
+plt.savefig('network_efficiency_comparison.png', dpi=600, bbox_inches='tight')
+plt.show()
+```
+ 
+
+
+There are two graphs above, one with the purely braessian causing OD pair and one with a set of all possible pairs. The graphs show clear braessian behaviour showing the shorter route does improve average journey times at low capacities but once the system gets strained it vastly negates performance. It also nicely and neatly shows the theoretical efficiency loss from this behaviour as 4/3 which was proven by Roughgarden 2002 for linear latency functions.
+
+# Policy Recommendation 
+Queens road should not be thought of as a quick through route between the bottom of Welford Road and the top of London Road or vice versa. It there for should only be a road for local people and should be pedestrianised accordingly. It is a thriving hub for the local community given it is very walkable from dense urban housing around it and its opposite major religious institutions as well as big colleges, the university, and the park. For these reasons traffic calming, and elimination measures should follow. 
+
+# Conclusion 
+This project managed to develop a simple transport model which was able to demonstrate Braess paradox on a real road network in Leicester, these findings if developed on have clear implications for transport planning. There is still no generalisable solution that has been found in detecting braessian edges in transport networks. This paper seeks to emphasise the difficult nature of making transport models and perhaps seeks to push for a better understanding of the quantitative. This can show the limits of trying to solve anything exactly and push for a more rounded and thoughtful understanding of transport as well as urban life. 
+
+# Discussion and Limitations 
+There is a myriad of limitations to this project given its complex theoretical nature applied to a practical problem in relatively short time. 
+The biggest limitations come with the transport model itself, it is relatively simple, which was done for good reason. It goes without saying the duration of the project was part of the reasoning. However, probably the overriding reason was if there were too many competing high-level interactions - given that braessian edge detection is already thought to be a somewhat intractable NP hard problem, that having too many second order interactions, would have made this project potentially a lot harder. 
+There are also limitations about the generalisability of the project, again there is no generalisable detection algorithm to present. There are only the embers of intuition coming from a centrality algorithm which detects which edges form the shortest paths between sets of OD pairs, and the “ranked previous edges” algorithm which ranks the edges which feature in the paths leading to over capacity edges. 
+The model failed to demonstrate braessian behaviour once the graph became too complicated, this is probably due to the nature of the problem. Some Braess-like behaviour was found, such that you can delete links which have non minimal flow an retain roughly equal performance. 
+The data was also a limitation, Open Street Map is not entirely complete or reliable, and even so, many basic assumptions were made about capacity, without much academic rigour. This was beyond the scope of this limited project. This makes the findings less applicable to the real-world example and certainly an area of improvement if the model was to be used as part of a policy consideration. These decisions were made as the topological relationism was considered to dwarf the specific conditions of the roads. 
+
+# Further work
+The project should hope to build on the work of Zhuang, by adding in nodal interactions. By definition adding and edge adds at least two extra nodes which reduces the overall capacity of the system, so for applied purposes the semi braessian situation of nodes should be investigated. Another piece of Zhuang’s work which should be commended on this topic is the dynamic interactions of vehicles instead of treating them as flow in a pipe. This could be added to the model. 
+The models data could be improved as discussed above.
+The most important piece of work would be to try and find generalisable set of principles to aid transport planners.
+
+
+# References
+Cohen, J.E. and Horowitz, P., 1991. Paradoxical behaviour of mechanical and electrical networks. Nature, 352(6337), pp.699-701.
+
+Youn, H., Gastner, M.T. and Jeong, H., 2008. Price of anarchy in transportation networks: efficiency and optimality control. Physical review letters, 101(12), p.128701.
+
+[28] L. W. Shapiro, Mathematics Magazine 60, 36 (1987)
+
+Zhuang, D., & Huang, J. (2022). Dynamic traffic assignment and effects of junctions on Braess paradox with cooperative autonomous vehicles. Journal of Transportation Engineering.
+
+Zhang, H., Li, J., & Wang, F.-Y. (2018). Impact of Braess Paradox in urban transportation networks with adaptive signal control. IEEE Transactions on Intelligent Transportation Systems, 19(5), 1452-1463.
+
+Manik, D. (2022). A new topological understanding of Braess Paradox in electrical networks. Journal of Network Theory in Applications.
+
+Shapiro, L. W. (1987). Mathematics Magazine, 60, 36.
+
+Colleta, A., & Jaqoud, M. (2016). Demonstrating Braess Paradox in the British power grid. Applied Energy, 185, 567-576.
+
+Roughgarden, T., & Tardos, É. (2002). How bad is selfish routing?. Journal of the ACM (JACM), 49(2), 236-259.
+
+Cohen, J. E., & Horowitz, P. (1991). Paradoxical behaviour of mechanical and electrical networks. Nature, 352(6337), 699-701.
+
+Youn, H., Gastner, M. T., & Jeong, H. (2008). Price of anarchy in transportation networks: Efficiency and optimality control. Physical Review Letters, 101(12), 128701.
+
+Gao, L., Wang, X., & Zhang, Y. (2021). Predicting Braess Paradox in transportation networks using machine learning. IEEE Access, 9, 23456-23467.
+
+
+
+
+
+
