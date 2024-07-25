@@ -2,7 +2,7 @@
 title: "Final Submission Braess Edge Detection"
 author: "Alex Thornton"
 date: "2024-05-15"
-output: pdf_document
+format: gfm
 ---
 
 
